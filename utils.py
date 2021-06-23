@@ -144,7 +144,7 @@ for key in gt_dict:
 
 def filter_bbox(img_id: int,
                  pred_dict: dict=pred_dict, gt_dict: dict=gt_dict,
-                 conf_thres: float=0.4, iou_thres: float=0.5):
+                 conf_thres: float=0.0, iou_thres: float=0.5):
     tp_idx, fp_idx = [], []
     ious = compute_iou(pred_dict[img_id]['bbox'], gt_dict[img_id]['bbox'])
     # make all the elemant zero except max element in each row
