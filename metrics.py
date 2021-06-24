@@ -46,6 +46,7 @@ def KL_score(pred_dict_list):
     '''
     num_models = len(pred_dict_list)
     image_ids = list(pred_dict_list[0].keys())
+    image_ids.sort()
     image_kl = np.zeros((1, len(image_ids)))
     for index, image_id in enumerate(image_ids):
         # Calculate average confidence score per class per model
@@ -83,6 +84,7 @@ def mutual_information(pred_dict_list):
     '''
     num_models = len(pred_dict_list)
     image_ids = list(pred_dict_list[0].keys())
+    image_ids.sort()
     image_mi = np.zeros((1, len(image_ids)))
 
     for index, image_id in enumerate(image_ids):
@@ -121,7 +123,9 @@ def max_entropy(pred_dict):
 
     If a class does not exist in an image, its entropy is 0.
     '''
+    pred_dict = pred_dict[0]
     image_ids = list(pred_dict.keys())
+    image_ids.sort()
     image_entropy = np.zeros((1, len(image_ids)))
     for index, image_id in enumerate(image_ids):
         pred_img = pred_dict[image_id]
@@ -145,7 +149,9 @@ def sum_entropy(pred_dict):
 
     If a class does not exist in an image, its entropy is 0.
     '''
+    pred_dict = pred_dict[0]
     image_ids = list(pred_dict.keys())
+    image_ids.sort()
     image_entropy = np.zeros((1, len(image_ids)))
     for index, image_id in enumerate(image_ids):
         pred_img = pred_dict[image_id]
@@ -166,27 +172,16 @@ for im in labels['images']:
     id2fname[im['id']] = im['file_name']
 
 def test():
-    with open('../TFS_analyze/TFS_vinai_batch4/val_5k.json') as f:
-        pred_results = json.load(f)
-    with open('../TFS_analyze/test_data_20210524/test_bbox_results.json') as f:
-        pred_results1 = json.load(f)
-
-    pred_dict = utils.create_im_dict(pred_results)
-    pred_dict1 = utils.create_im_dict(pred_results1)
-    shared_image = list(set(pred_dict.keys()) & set(pred_dict1.keys()))
-
-    # Only select images that have prediction results from all models
-    pred_dict = {image_id: pred_dict[image_id] for image_id in shared_image}
-    pred_dict1 = {image_id: pred_dict1[image_id] for image_id in shared_image}
+    pred_dict = utils.create_im_dict_from_path(['../TFS_analyze/TFS_vinai_batch4/val_5k.json'])
+    pred_dict_list = utils.create_im_dict_from_path(['../TFS_analyze/TFS_vinai_batch4/val_5k.json',
+                                                    '../TFS_analyze/test_data_20210524/test_bbox_results.json'])
     
-    assert(len(pred_dict) == len(pred_dict1))
-    
-    pred_dict_list = [pred_dict, pred_dict1]
-
-    image_mi = KL_score(pred_dict_list) 
+    image_mi = sum_entropy(pred_dict) 
     uncertain_img_index = image_mi.argsort()[0][::-1][:10]
     image_ids = list(pred_dict.keys())
-    
+    image_ids.sort()
+    print(uncertain_img_index)
+    '''
     for i in uncertain_img_index:
         image_id = image_ids[i]
         
@@ -197,6 +192,6 @@ def test():
         
         img = utils.bbox_visualize(image_id, img_root='../TFS_analyze/test_data_20210524/data/')
         img.show()
-    
+    '''
 if __name__ == '__main__':
     test()

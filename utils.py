@@ -19,6 +19,44 @@ for label in labels['images']:
     
 id2fname = {v: k for k, v in fname2id.items()}
 
+def load_json(filepath):
+    with open(filepath) as f:
+        json_file = json.load(f)
+
+    return json_file
+
+
+def filter_predictions(pred_dict_list):
+    ''' 
+    For each prediction results, only select images that exist in all results
+    '''
+    image_id_list = []
+    for pred_dict in pred_dict_list:
+        image_id_list.append(set(pred_dict.keys()))
+
+    # Get shared image ids
+    shared_images = set.intersection(*image_id_list)
+
+    # Filter prediction
+    for i, pred_dict in enumerate(pred_dict_list):
+        pred_dict_list[i] = {image_id: pred_dict[image_id] for image_id in shared_images}
+    return pred_dict_list
+
+
+def create_im_dict_from_path(pred_path):
+    '''
+    From a list of prediction path, create a list of prediction dictionaries
+    '''
+    pred_dict_list = []
+    for path in pred_path:
+        pred_results = load_json(path)
+        pred_dict_list.append(create_im_dict(pred_results))
+    
+    if len(pred_dict_list) > 1:
+        pred_dict_list = filter_predictions(pred_dict_list)
+    
+    return pred_dict_list
+
 
 def create_im_dict(pred_results):
     '''
