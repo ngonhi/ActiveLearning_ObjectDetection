@@ -2,7 +2,7 @@
 ## Overview
 Using prediction results, selecting images that are most informative. These images tend to have inconsistent confidence score among different classes.
 
-Four methods are supported in this program:
+Four methods are supported in this program: (the first two methods are visually better)
 * Max Entropy (single model)
 * Sum Entropy (single model)
 * Mutual Information (multi models)
