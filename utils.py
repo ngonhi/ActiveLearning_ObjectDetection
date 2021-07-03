@@ -7,17 +7,15 @@ from tqdm import tqdm
 from IPython.display import display
 
 
-with open('../TFS_analyze/TFS_vinai_batch4/labels.json') as f:
-    labels = json.load(f)
-
-with open('../TFS_analyze/TFS_vinai_batch4/val_5k.json') as f:
-    pred = json.load(f)
-
-fname2id = {}
-for label in labels['images']:
-    fname2id[label['file_name']] = label['id']
+def map_id_to_fname(images):
+    'From ground truth json file, create a dictionary with key = image_id, value=filename'
+    fname2id = {}
+    for label in images:
+        fname2id[label['file_name']] = label['id']
     
-id2fname = {v: k for k, v in fname2id.items()}
+    id2fname = {v: k for k, v in fname2id.items()}
+
+    return id2fname
 
 def load_json(filepath):
     with open(filepath) as f:
@@ -40,21 +38,6 @@ def filter_predictions(pred_dict_list):
     # Filter prediction
     for i, pred_dict in enumerate(pred_dict_list):
         pred_dict_list[i] = {image_id: pred_dict[image_id] for image_id in shared_images}
-    return pred_dict_list
-
-
-def create_im_dict_from_path(pred_path):
-    '''
-    From a list of prediction path, create a list of prediction dictionaries
-    '''
-    pred_dict_list = []
-    for path in pred_path:
-        pred_results = load_json(path)
-        pred_dict_list.append(create_im_dict(pred_results))
-    
-    if len(pred_dict_list) > 1:
-        pred_dict_list = filter_predictions(pred_dict_list)
-    
     return pred_dict_list
 
 
@@ -84,6 +67,21 @@ def create_im_dict(pred_results):
         ret[image_id][cat].append(pred['score'])
     
     return ret
+
+
+def create_im_dict_from_path(pred_path):
+    '''
+    From a list of prediction path, create a list of prediction dictionaries
+    '''
+    pred_dict_list = []
+    for path in pred_path:
+        pred_results = load_json(path)
+        pred_dict_list.append(create_im_dict(pred_results))
+    
+    if len(pred_dict_list) > 1:
+        pred_dict_list = filter_predictions(pred_dict_list)
+    
+    return pred_dict_list
 
 
 def compute_iou(pred_boxes, gt_boxes):
@@ -169,35 +167,44 @@ def get_gt_dict(annotations, category_id_list=[0,1,2,3,4,5]):
     
     return gt_dict
 
-id2cat = {}
-for cat in labels['categories']:
-    id2cat[cat['id']] = cat['name']
-id2cat = {0: 'C', 1: 'NH', 2: 'HL', 3: 'CD', 4: 'CL', 5: 'DGT'}
-gt_dict = get_gt_dict(labels['annotations'])
-pred_dict = get_prediction_dict(pred)
-for key in pred_dict:
-    pred_dict[key]['labels'] = [id2cat[x] for x in pred_dict[key]['category_id']]
-for key in gt_dict:
-    gt_dict[key]['labels'] = [id2cat[x] for x in gt_dict[key]['category_id']]
 
-def filter_bbox(img_id: int,
-                 pred_dict: dict=pred_dict, gt_dict: dict=gt_dict,
-                 conf_thres: float=0.0, iou_thres: float=0.5):
+def prepare_visualization_boxes(pred_path, gt_path):
+    pred_json = load_json(pred_path)
+    labels = load_json(gt_path)
+    images = labels['images']
+    annotations = labels['annotations']
+
+    gt_dict = get_gt_dict(annotations)
+    pred_dict = get_prediction_dict(pred_json)
+
+    id2cat = {0: 'C', 1: 'NH', 2: 'HL', 3: 'CD', 4: 'CL', 5: 'DGT'}
+    for key in pred_dict:
+        pred_dict[key]['labels'] = [id2cat[x] for x in pred_dict[key]['category_id']]
+    for key in gt_dict:
+        gt_dict[key]['labels'] = [id2cat[x] for x in gt_dict[key]['category_id']]
+
+    id2fname = map_id_to_fname(images)
+
+    return pred_dict, gt_dict, id2fname
+
+
+def filter_bbox(pred_bbox, gt_bbox,
+                conf_thres: float=0.0, iou_thres: float=0.5):
     tp_idx, fp_idx = [], []
-    ious = compute_iou(pred_dict[img_id]['bbox'], gt_dict[img_id]['bbox'])
+    ious = compute_iou(pred_bbox['bbox'], gt_bbox['bbox'])
     # make all the elemant zero except max element in each row
     ious = ious * (ious >= np.sort(ious, axis=0)[[-1],:])
     ious_idx = np.argwhere(ious > iou_thres)
     # k (pred_id, gt_id)
     for k in ious_idx:
-        if (pred_dict[img_id]['score'][k[0]] > conf_thres):
-            if (pred_dict[img_id]['category_id'][k[0]] != gt_dict[img_id]['category_id'][k[1]]):
+        if (pred_bbox['score'][k[0]] > conf_thres):
+            if (pred_bbox['category_id'][k[0]] != gt_bbox['category_id'][k[1]]):
                 fp_idx.append((k[0], k[1], ious[k[0]][k[1]]))
             else:
                 tp_idx.append((k[0], k[1], ious[k[0]][k[1]]))
     ious = ious * (ious >= np.sort(ious, axis=0)[[-1],:])
     no_gt_idx = list(np.where(ious.sum(axis=1) == 0)[0])
-    no_gt_idx = [idx for idx in no_gt_idx if pred_dict[img_id]['score'][idx] > conf_thres]
+    no_gt_idx = [idx for idx in no_gt_idx if pred_bbox['score'][idx] > conf_thres]
     no_pred_idx = list(np.where(ious.sum(axis=0) == 0)[0])
     n_fail = len(fp_idx) + len(no_gt_idx) + len(no_pred_idx)
     return n_fail, tp_idx, fp_idx, no_gt_idx, no_pred_idx
@@ -259,17 +266,17 @@ def draw_bbox_w_iou(drawer, pred_anno, gt_anno, idx_tuple, name):
     return drawer
 
 
-def bbox_visualize(img_id: int, img_root: str='test_images/'):
-    _, tp_idx, fp_idx, no_gt_idx, no_pred_idx = filter_bbox(img_id)
-    img = Image.open(img_root + id2fname[img_id])
+def bbox_visualize(pred_bbox, gt_bbox, image_file):
+    _, tp_idx, fp_idx, no_gt_idx, no_pred_idx = filter_bbox(pred_bbox, gt_bbox)
+    img = Image.open(image_file)
     drawer = ImageDraw.Draw(img)
     ## Draw prediction without ground-truth
-    drawer = draw_bbox_wo_iou(drawer, pred_dict[img_id], no_gt_idx, 'FP')
+    drawer = draw_bbox_wo_iou(drawer, pred_bbox, no_gt_idx, 'FP')
     ## Draw ground-truth without prediction
-    drawer = draw_bbox_wo_iou(drawer, gt_dict[img_id], no_pred_idx, 'FN')
+    drawer = draw_bbox_wo_iou(drawer, gt_bbox, no_pred_idx, 'FN')
     ## Draw false cat
-    draw_bbox_w_iou(drawer, pred_dict[img_id], gt_dict[img_id], fp_idx, 'FP')
+    draw_bbox_w_iou(drawer, pred_bbox, gt_bbox, fp_idx, 'FP')
     ## Draw TP
-    draw_bbox_w_iou(drawer, pred_dict[img_id], gt_dict[img_id], tp_idx, 'TP')
+    draw_bbox_w_iou(drawer, pred_bbox, gt_bbox, tp_idx, 'TP')
     
     return img
